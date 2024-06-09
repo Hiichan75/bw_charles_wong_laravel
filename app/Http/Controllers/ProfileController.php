@@ -21,20 +21,42 @@ class ProfileController extends Controller
         ]);
     }
 
+    public function show()
+    {
+        $user = Auth::user();
+        return view('profile.show', compact('user'));
+    }
+
     /**
      * Update the user's profile information.
      */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
+    public function update(Request $request)
     {
-        $request->user()->fill($request->validated());
+        $user = Auth::user();
+        $user->update($request->only(['username', 'birthday', 'about_me']));
+        if ($request->hasFile('avatar')) {
+            $avatarPath = $request->file('avatar')->store('avatars', 'public');
+            $user->avatar = $avatarPath;
+            $user->save();
+        }
+        return redirect()->route('profile.show');
+        $data = $request->validate([
+            'name' => 'required|string|max:16',
+            'birthday' => 'nullable|date',
+            'bio' => 'nullable|string',
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+        ]);
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+        if ($request->hasFile('avatar')) {
+            $path = $request->file('avatar')->store('avatars', 'public');
+            $data['avatar'] = $path;
+            if ($user->avatar) {
+                Storage::disk('public')->delete($user->avatar);
+            }
         }
 
-        $request->user()->save();
-
-        return Redirect::route('profile.edit')->with('status', 'profile-updated');
+        $user->update($data);
+        return redirect()->route('profile.show');
     }
 
     /**
@@ -50,7 +72,9 @@ class ProfileController extends Controller
 
         Auth::logout();
 
+        $user = Auth::user();
         $user->delete();
+        return redirect('/');
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
